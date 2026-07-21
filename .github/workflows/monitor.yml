@@ -1,8 +1,11 @@
 name: Channel Monitor — Comment Ideas
 
 on:
+  # 8:00 and 20:00 Kyiv time (UTC+3 summer)
   schedule:
-    - cron: "0 */2 * * *"
+    - cron: "0 5 * * *"   # 8:00 Kyiv
+    - cron: "0 17 * * *"  # 20:00 Kyiv
+
   workflow_dispatch:
 
 jobs:
