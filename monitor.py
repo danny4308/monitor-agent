@@ -17,54 +17,44 @@ ADMIN_ID = "5610144341"
 HOURS_LOOKBACK = 12  # Only posts from last 12 hours
 
 TARGET_CHANNELS = [
-    # AI и нейросети
-    "@AIhappens",
-    "@AI_UD",
-    "@tproger",
-    "@deeptechnet",
-    "@aiaiai",
-    "@vistehno",
-    "@pro_neiroset",
-    "@gptpublic",
-    "@chatgpt_neiro_news",
-    "@chat_ai_bot_news",
-    "@pro_ai_novosti",
-    "@ipumpbrain",
-    "@chatgpt_try",
-    "@gpt4turbo",
-    "@chatgptv",
+    # Топ AI (активные, обновляются каждые часы)
+    "@hiaimedia",
+    "@ai4telegram",
+    "@neuraldvig",
+    "@gpt_news",
+    "@ai_machinelearning_big_data",
+    "@ai_newz",
+    "@data_secrets",
+    "@JarvisNew",
+    "@seeallochnaya",
+    "@dailyprompts",
+    "@studgpt",
+    "@neuro_praxis",
+    "@molyanov_blog",
+    "@lama_channel_gpt",
+    "@AI_Chad",
+    "@notboring_tech",
+    "@TochkiNadAI",
+    "@ppprompt",
+    "@prompt1_ru",
+    "@olya_tashit",
+    "@svodkaai_ai",
+    "@LLMScience",
+    "@Futuris",
+    "@RixAiHub",
 
     # Инвестиции и финансы
     "@caprofit",
     "@smartlab",
     "@finside",
-    "@inflationinsights",
-    "@etffocus",
-    "@vc_journal",
-    "@unicornfactory",
-    "@angels_investing",
-    "@smart_beta",
-    "@passiveincome",
+    "@TheEdinorog",
 
     # Крипта
     "@bit_novosti",
     "@criptovest",
-    "@Bitcoin_Ethereum_Altcoins",
-    "@stablediffusionbest",
-    "@cryptosekta",
 
-    # Венчур и стартапы
-    "@TheEdinorog",
-    "@rusven",
+    # Бизнес и стартапы
     "@razvedka_vc",
-    "@startandwin",
-
-    # Бизнес и технологии
-    "@wylsacom",
-    "@rozetked",
-    "@Denis_sexy_it",
-    "@neyroset_vidit",
-    "@mgerkom",
 ]
 
 KEYWORDS = [
