@@ -125,7 +125,7 @@ def get_channel_posts(channel: str) -> list[dict]:
         # Split into message blocks
         message_blocks = re.split(r'<div class="tgme_widget_message_wrap', resp.text)
 
-        for block in message_blocks[1:]:  # Skip first empty
+       for block in message_blocks[-2:-1]:  # Only last post
             # Extract post ID
             id_match = re.search(r'data-post="([^"]+)"', block)
             if not id_match:
