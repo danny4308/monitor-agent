@@ -1,18 +1,20 @@
 """
 monitor.py — Telegram Channel Monitor Agent
-Watches target channels, detects relevant posts, generates comment ideas,
-sends notifications to admin.
+Checks posts from last 12 hours only.
+Run twice a day: 8:00 and 20:00 Kyiv time.
 """
 
 import os
 import json
+import re
 import requests
 import anthropic
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 
 ADMIN_ID = "5610144341"
+HOURS_LOOKBACK = 12  # Only posts from last 12 hours
 
 TARGET_CHANNELS = [
     # AI и нейросети
@@ -78,7 +80,6 @@ KEYWORDS = [
 
 YOUR_CHANNEL = "@thepulseai"
 YOUR_CHANNEL_TOPIC = "AI, технологии и деньги — ежедневный дайджест"
-
 SEEN_POSTS_FILE = "seen_posts.json"
 
 
@@ -98,10 +99,26 @@ def save_seen_posts(seen: set):
         json.dump(seen_list, f)
 
 
+def parse_post_date(html: str, post_block: str) -> datetime | None:
+    """Extract post datetime from Telegram web HTML."""
+    try:
+        # Find datetime in post block
+        time_match = re.search(r'datetime="([^"]+)"', post_block)
+        if time_match:
+            dt_str = time_match.group(1)
+            # Format: 2026-07-15T10:30:00+00:00
+            dt = datetime.fromisoformat(dt_str)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
+    except Exception:
+        pass
+    return None
+
+
 def get_channel_posts(channel: str) -> list[dict]:
     """Fetch recent posts from public Telegram channel."""
     try:
-        import re
         username = channel.lstrip("@")
         resp = requests.get(
             f"https://t.me/s/{username}",
@@ -112,28 +129,55 @@ def get_channel_posts(channel: str) -> list[dict]:
         if not resp.ok:
             return []
 
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=HOURS_LOOKBACK)
         posts = []
-        text_pattern = re.findall(
-            r'<div class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>',
-            resp.text,
-            re.DOTALL
-        )
-        id_pattern = re.findall(r'data-post="([^"]+)"', resp.text)
 
-        for text_html, post_id in zip(text_pattern[:15], id_pattern[:15]):
-            clean_text = re.sub(r'<[^>]+>', ' ', text_html).strip()
+        # Split into message blocks
+        message_blocks = re.split(r'<div class="tgme_widget_message_wrap', resp.text)
+
+        for block in message_blocks[1:]:  # Skip first empty
+            # Extract post ID
+            id_match = re.search(r'data-post="([^"]+)"', block)
+            if not id_match:
+                continue
+            post_id = id_match.group(1)
+            msg_id = post_id.split("/")[-1] if "/" in post_id else post_id
+
+            # Extract datetime
+            post_dt = parse_post_date(resp.text, block)
+
+            # Skip if too old
+            if post_dt and post_dt < cutoff:
+                continue
+
+            # If no date found — skip (safer than including old posts)
+            if not post_dt:
+                continue
+
+            # Extract text
+            text_match = re.search(
+                r'<div class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>',
+                block,
+                re.DOTALL
+            )
+            if not text_match:
+                continue
+
+            clean_text = re.sub(r'<[^>]+>', ' ', text_match.group(1)).strip()
             clean_text = clean_text.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>').replace('&#39;', "'").replace('&nbsp;', ' ')
             clean_text = re.sub(r'\s+', ' ', clean_text).strip()
 
             if len(clean_text) < 30:
                 continue
 
-            msg_id = post_id.split("/")[-1] if "/" in post_id else post_id
+            time_str = post_dt.strftime("%d.%m %H:%M") if post_dt else "недавно"
+
             posts.append({
                 "id": f"{channel}_{msg_id}",
                 "text": clean_text[:800],
                 "link": f"https://t.me/{username}/{msg_id}",
                 "channel": channel,
+                "date": time_str,
             })
 
         return posts
@@ -176,7 +220,7 @@ def generate_comment_idea(post: dict) -> str:
 
 
 def send_notification(bot_token: str, post: dict, comment_idea: str):
-    message = f"""🔔 {post['channel']}
+    message = f"""🔔 {post['channel']} | {post['date']}
 
 📝 {post['text'][:250]}{'...' if len(post['text']) > 250 else ''}
 
@@ -185,12 +229,15 @@ def send_notification(bot_token: str, post: dict, comment_idea: str):
 
 🔗 {post['link']}"""
 
-    requests.post(
+    resp = requests.post(
         f"https://api.telegram.org/bot{bot_token}/sendMessage",
         json={"chat_id": ADMIN_ID, "text": message[:4096]},
         timeout=15,
     )
-    print(f"  ✓ Notification sent")
+    if resp.ok:
+        print(f"  ✓ Notification sent")
+    else:
+        print(f"  ✗ Error: {resp.text[:100]}")
 
 
 def main():
@@ -199,12 +246,14 @@ def main():
     new_seen = set()
     notifications_sent = 0
 
-    print(f"Monitoring {len(TARGET_CHANNELS)} channels...")
+    cutoff_str = (datetime.now(timezone.utc) - timedelta(hours=HOURS_LOOKBACK)).strftime("%d.%m %H:%M")
+    print(f"Monitoring {len(TARGET_CHANNELS)} channels (posts since {cutoff_str} UTC)...")
     print(f"Already seen: {len(seen_posts)} posts")
 
     for channel in TARGET_CHANNELS:
         print(f"Checking {channel}...")
         posts = get_channel_posts(channel)
+        print(f"  Recent posts: {len(posts)}")
 
         for post in posts:
             post_id = post["id"]
@@ -225,7 +274,7 @@ def main():
                 print(f"  Error: {e}")
 
     save_seen_posts(seen_posts | new_seen)
-    print(f"\nDone! Notifications: {notifications_sent}")
+    print(f"\nDone! Notifications sent: {notifications_sent}")
 
 
 if __name__ == "__main__":
