@@ -1,0 +1,34 @@
+name: Channel Monitor — Comment Ideas
+
+on:
+  schedule:
+    - cron: "0 */2 * * *"
+  workflow_dispatch:
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore seen posts cache
+        uses: actions/cache@v4
+        with:
+          path: seen_posts.json
+          key: seen-posts-${{ github.run_number }}
+          restore-keys: |
+            seen-posts-
+
+      - name: Run monitor
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: python monitor.py
