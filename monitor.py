@@ -1,7 +1,7 @@
 """
 monitor.py — Telegram Channel Monitor Agent
-Checks posts from last 12 hours only.
-Run twice a day: 8:00 and 20:00 Kyiv time.
+Checks only the LAST post from each channel.
+Run manually when needed.
 """
 
 import os
@@ -14,10 +14,10 @@ from pathlib import Path
 
 
 ADMIN_ID = "5610144341"
-HOURS_LOOKBACK = 12  # Only posts from last 12 hours
+HOURS_LOOKBACK = 12
 
 TARGET_CHANNELS = [
-    # Топ AI (активные, обновляются каждые часы)
+    # Топ AI каналы
     "@hiaimedia",
     "@ai4telegram",
     "@neuraldvig",
@@ -89,25 +89,8 @@ def save_seen_posts(seen: set):
         json.dump(seen_list, f)
 
 
-def parse_post_date(html: str, post_block: str) -> datetime | None:
-    """Extract post datetime from Telegram web HTML."""
-    try:
-        # Find datetime in post block
-        time_match = re.search(r'datetime="([^"]+)"', post_block)
-        if time_match:
-            dt_str = time_match.group(1)
-            # Format: 2026-07-15T10:30:00+00:00
-            dt = datetime.fromisoformat(dt_str)
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            return dt
-    except Exception:
-        pass
-    return None
-
-
-def get_channel_posts(channel: str) -> list[dict]:
-    """Fetch recent posts from public Telegram channel."""
+def get_last_post(channel: str) -> dict | None:
+    """Fetch only the LAST post from public Telegram channel."""
     try:
         username = channel.lstrip("@")
         resp = requests.get(
@@ -117,15 +100,15 @@ def get_channel_posts(channel: str) -> list[dict]:
         )
 
         if not resp.ok:
-            return []
+            return None
 
         cutoff = datetime.now(timezone.utc) - timedelta(hours=HOURS_LOOKBACK)
-        posts = []
 
         # Split into message blocks
         message_blocks = re.split(r'<div class="tgme_widget_message_wrap', resp.text)
 
-       for block in message_blocks[-2:-1]:  # Only last post
+        # Go through blocks from the end to find the last valid post
+        for block in reversed(message_blocks[1:]):
             # Extract post ID
             id_match = re.search(r'data-post="([^"]+)"', block)
             if not id_match:
@@ -134,15 +117,20 @@ def get_channel_posts(channel: str) -> list[dict]:
             msg_id = post_id.split("/")[-1] if "/" in post_id else post_id
 
             # Extract datetime
-            post_dt = parse_post_date(resp.text, block)
+            time_match = re.search(r'datetime="([^"]+)"', block)
+            if not time_match:
+                continue
+
+            try:
+                post_dt = datetime.fromisoformat(time_match.group(1))
+                if post_dt.tzinfo is None:
+                    post_dt = post_dt.replace(tzinfo=timezone.utc)
+            except Exception:
+                continue
 
             # Skip if too old
-            if post_dt and post_dt < cutoff:
-                continue
-
-            # If no date found — skip (safer than including old posts)
-            if not post_dt:
-                continue
+            if post_dt < cutoff:
+                return None
 
             # Extract text
             text_match = re.search(
@@ -160,21 +148,19 @@ def get_channel_posts(channel: str) -> list[dict]:
             if len(clean_text) < 30:
                 continue
 
-            time_str = post_dt.strftime("%d.%m %H:%M") if post_dt else "недавно"
-
-            posts.append({
+            return {
                 "id": f"{channel}_{msg_id}",
                 "text": clean_text[:800],
                 "link": f"https://t.me/{username}/{msg_id}",
                 "channel": channel,
-                "date": time_str,
-            })
+                "date": post_dt.strftime("%d.%m %H:%M"),
+            }
 
-        return posts
+        return None
 
     except Exception as e:
         print(f"  Error fetching {channel}: {e}")
-        return []
+        return None
 
 
 def is_relevant(text: str) -> bool:
@@ -237,31 +223,34 @@ def main():
     notifications_sent = 0
 
     cutoff_str = (datetime.now(timezone.utc) - timedelta(hours=HOURS_LOOKBACK)).strftime("%d.%m %H:%M")
-    print(f"Monitoring {len(TARGET_CHANNELS)} channels (posts since {cutoff_str} UTC)...")
-    print(f"Already seen: {len(seen_posts)} posts")
+    print(f"Monitoring {len(TARGET_CHANNELS)} channels (last {HOURS_LOOKBACK}h, since {cutoff_str} UTC)...")
 
     for channel in TARGET_CHANNELS:
         print(f"Checking {channel}...")
-        posts = get_channel_posts(channel)
-        print(f"  Recent posts: {len(posts)}")
+        post = get_last_post(channel)
 
-        for post in posts:
-            post_id = post["id"]
-            new_seen.add(post_id)
+        if not post:
+            print(f"  No recent post")
+            continue
 
-            if post_id in seen_posts:
-                continue
+        post_id = post["id"]
+        new_seen.add(post_id)
 
-            if not is_relevant(post["text"]):
-                continue
+        if post_id in seen_posts:
+            print(f"  Already seen")
+            continue
 
-            print(f"  Relevant! Generating comment idea...")
-            try:
-                comment_idea = generate_comment_idea(post)
-                send_notification(bot_token, post, comment_idea)
-                notifications_sent += 1
-            except Exception as e:
-                print(f"  Error: {e}")
+        if not is_relevant(post["text"]):
+            print(f"  Not relevant")
+            continue
+
+        print(f"  Relevant! Generating comment idea...")
+        try:
+            comment_idea = generate_comment_idea(post)
+            send_notification(bot_token, post, comment_idea)
+            notifications_sent += 1
+        except Exception as e:
+            print(f"  Error: {e}")
 
     save_seen_posts(seen_posts | new_seen)
     print(f"\nDone! Notifications sent: {notifications_sent}")
