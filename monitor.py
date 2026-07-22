@@ -1,6 +1,7 @@
 """
 monitor.py — Telegram Channel Monitor Agent
 Checks only the LAST post from each channel.
+Generates human-like comments, not AI templates.
 Run manually when needed.
 """
 
@@ -17,55 +18,40 @@ ADMIN_ID = "5610144341"
 HOURS_LOOKBACK = 12
 
 TARGET_CHANNELS = [
-    # Топ AI каналы
-    "@hiaimedia",
-    "@ai4telegram",
-    "@neuraldvig",
-    "@gpt_news",
-    "@ai_machinelearning_big_data",
-    "@ai_newz",
-    "@data_secrets",
-    "@JarvisNew",
-    "@seeallochnaya",
-    "@dailyprompts",
-    "@studgpt",
-    "@neuro_praxis",
-    "@molyanov_blog",
-    "@lama_channel_gpt",
-    "@AI_Chad",
-    "@notboring_tech",
-    "@TochkiNadAI",
-    "@ppprompt",
-    "@prompt1_ru",
-    "@olya_tashit",
-    "@svodkaai_ai",
-    "@LLMScience",
-    "@Futuris",
-    "@RixAiHub",
+    # Топ AI каналы с активными комментариями
+    "@hiaimedia",           # 2.5М — главный AI канал
+    "@neuraldvig",          # 304К — культовый, активные комменты
+    "@ai_machinelearning_big_data",  # 290К — ML
+    "@ai_newz",             # 95К — авторская аналитика
+    "@data_secrets",        # 91К — ML
+    "@seeallochnaya",       # 76К — NLP, живое обсуждение
+    "@dailyprompts",        # 41К — промпты
+    "@neuro_praxis",        # 30К — нейросети
+    "@molyanov_blog",       # 28К — ИИ и бизнес, много дискуссий
+    "@AI_Chad",             # 21К — нейросети и маркетинг
+    "@notboring_tech",      # 20К — технологии и стартапы
+    "@TochkiNadAI",         # 15К — активные комменты
+    "@ppprompt",            # 14К — AI и технологии
+    "@olya_tashit",         # 13К — технологии
+    "@svodkaai_ai",         # 10К — сводка AI
+    "@LLMScience",          # 8К — LLM
+    "@Futuris",             # 5К — AI инструменты
+    "@neural_houses",       # нейросетевые покои
+    "@aioftheday",          # AI of the day
+    "@AI_UD",               # дайджест AI
 
-    # Инвестиции и финансы
+    # Инвестиции и финансы (с комментами)
     "@caprofit",
-    "@smartlab",
-    "@finside",
     "@TheEdinorog",
+    "@notboring_tech",
 
     # Крипта
     "@bit_novosti",
     "@criptovest",
 
-    # Бизнес и стартапы
+    # Бизнес
     "@razvedka_vc",
-]
-
-KEYWORDS = [
-    "ai", "ии", "искусственный интеллект", "нейросеть",
-    "openai", "anthropic", "claude", "gpt", "llm",
-    "nvidia", "apple", "microsoft", "google", "meta",
-    "инвестиции", "крипта", "bitcoin", "ethereum", "btc",
-    "стартап", "venture", "деньги", "рынок", "акции",
-    "автоматизация", "будущее", "технологии", "чипы",
-    "заработок", "бизнес", "монетизация", "продукт",
-    "агент", "llama", "gemini", "midjourney",
+    "@rusven",
 ]
 
 YOUR_CHANNEL = "@thepulseai"
@@ -103,20 +89,15 @@ def get_last_post(channel: str) -> dict | None:
             return None
 
         cutoff = datetime.now(timezone.utc) - timedelta(hours=HOURS_LOOKBACK)
-
-        # Split into message blocks
         message_blocks = re.split(r'<div class="tgme_widget_message_wrap', resp.text)
 
-        # Go through blocks from the end to find the last valid post
         for block in reversed(message_blocks[1:]):
-            # Extract post ID
             id_match = re.search(r'data-post="([^"]+)"', block)
             if not id_match:
                 continue
             post_id = id_match.group(1)
             msg_id = post_id.split("/")[-1] if "/" in post_id else post_id
 
-            # Extract datetime
             time_match = re.search(r'datetime="([^"]+)"', block)
             if not time_match:
                 continue
@@ -128,11 +109,9 @@ def get_last_post(channel: str) -> dict | None:
             except Exception:
                 continue
 
-            # Skip if too old
             if post_dt < cutoff:
                 return None
 
-            # Extract text
             text_match = re.search(
                 r'<div class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>',
                 block,
@@ -159,13 +138,23 @@ def get_last_post(channel: str) -> dict | None:
         return None
 
     except Exception as e:
-        print(f"  Error fetching {channel}: {e}")
+        print(f"  Error: {e}")
         return None
 
 
 def is_relevant(text: str) -> bool:
+    keywords = [
+        "ai", "ии", "искусственный интеллект", "нейросеть",
+        "openai", "anthropic", "claude", "gpt", "llm",
+        "nvidia", "apple", "microsoft", "google", "meta",
+        "инвестиции", "крипта", "bitcoin", "ethereum",
+        "стартап", "деньги", "рынок", "акции",
+        "автоматизация", "технологии", "чипы",
+        "заработок", "бизнес", "монетизация",
+        "агент", "llama", "gemini",
+    ]
     text_lower = text.lower()
-    return any(kw in text_lower for kw in KEYWORDS)
+    return any(kw in text_lower for kw in keywords)
 
 
 def generate_comment_idea(post: dict) -> str:
@@ -173,22 +162,32 @@ def generate_comment_idea(post: dict) -> str:
 
     message = client.messages.create(
         model="claude-opus-4-6",
-        max_tokens=400,
+        max_tokens=500,
         messages=[{
             "role": "user",
-            "content": f"""Помоги написать умный комментарий под этот пост от имени автора канала "{YOUR_CHANNEL}" ({YOUR_CHANNEL_TOPIC}).
+            "content": f"""Ты помогаешь написать живой комментарий в Telegram под пост.
+
+Автор комментария ведёт канал {YOUR_CHANNEL} про AI и деньги — но это НЕ надо упоминать напрямую.
 
 Пост из {post['channel']}:
 {post['text']}
 
-Напиши 2 варианта умного комментария:
-- Добавляет ценность, показывает экспертизу в AI/технологиях/деньгах
-- НЕ рекламирует канал напрямую
-- 1-3 предложения, живой язык
-- На русском языке
+Напиши 3 варианта комментария. Каждый должен быть:
+- Живым и человечным — как пишут умные люди в Telegram, не боты
+- Разным по стилю: один короткий и острый, один с личным мнением, один с уточняющим вопросом
+- Без шаблонных фраз типа "отличный пост", "согласен", "интересно"
+- Иногда можно не соглашаться или добавить нюанс который упустили
+- 1-2 предложения максимум
+- На русском, без смайликов если не нужны
 
-Вариант 1: [комментарий]
-Вариант 2: [комментарий]"""
+Примеры хорошего стиля:
+- "тут ключевое что никто не замечает — [конкретное наблюдение]"
+- "сам сталкивался с этим, но в реальности оказалось [опыт]"
+- "а что с [конкретный аспект темы]? это же меняет картину"
+
+Вариант 1 (короткий и острый):
+Вариант 2 (личное мнение/опыт):
+Вариант 3 (вопрос или нюанс):"""
         }]
     )
 
@@ -198,22 +197,21 @@ def generate_comment_idea(post: dict) -> str:
 def send_notification(bot_token: str, post: dict, comment_idea: str):
     message = f"""🔔 {post['channel']} | {post['date']}
 
-📝 {post['text'][:250]}{'...' if len(post['text']) > 250 else ''}
+📝 {post['text'][:300]}{'...' if len(post['text']) > 300 else ''}
 
-💬 Идеи для комментария:
+💬 Варианты комментария:
 {comment_idea}
 
-🔗 {post['link']}"""
+🔗 {post['link']}
 
-    resp = requests.post(
+💡 Выбери вариант → отредактируй под себя → опубликуй"""
+
+    requests.post(
         f"https://api.telegram.org/bot{bot_token}/sendMessage",
         json={"chat_id": ADMIN_ID, "text": message[:4096]},
         timeout=15,
     )
-    if resp.ok:
-        print(f"  ✓ Notification sent")
-    else:
-        print(f"  ✗ Error: {resp.text[:100]}")
+    print(f"  ✓ Sent")
 
 
 def main():
@@ -222,8 +220,7 @@ def main():
     new_seen = set()
     notifications_sent = 0
 
-    cutoff_str = (datetime.now(timezone.utc) - timedelta(hours=HOURS_LOOKBACK)).strftime("%d.%m %H:%M")
-    print(f"Monitoring {len(TARGET_CHANNELS)} channels (last {HOURS_LOOKBACK}h, since {cutoff_str} UTC)...")
+    print(f"Checking {len(TARGET_CHANNELS)} channels (last {HOURS_LOOKBACK}h)...")
 
     for channel in TARGET_CHANNELS:
         print(f"Checking {channel}...")
@@ -244,7 +241,7 @@ def main():
             print(f"  Not relevant")
             continue
 
-        print(f"  Relevant! Generating comment idea...")
+        print(f"  Relevant! Generating...")
         try:
             comment_idea = generate_comment_idea(post)
             send_notification(bot_token, post, comment_idea)
@@ -253,7 +250,7 @@ def main():
             print(f"  Error: {e}")
 
     save_seen_posts(seen_posts | new_seen)
-    print(f"\nDone! Notifications sent: {notifications_sent}")
+    print(f"\nDone! Notifications: {notifications_sent}")
 
 
 if __name__ == "__main__":
